@@ -1,26 +1,26 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Configuration;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Azure.Documents.Client;
 using Microsoft.Azure.WebJobs.Host;
+using Microsoft.Extensions.Logging;
 using TollBooth.Models;
 
 namespace TollBooth
 {
     internal class DatabaseMethods
     {
-        private readonly string _endpointUrl = ConfigurationManager.AppSettings["cosmosDBEndPointUrl"];
-        private readonly string _authorizationKey = ConfigurationManager.AppSettings["cosmosDBAuthorizationKey"];
-        private readonly string _databaseId = ConfigurationManager.AppSettings["cosmosDBDatabaseId"];
-        private readonly string _collectionId = ConfigurationManager.AppSettings["cosmosDBCollectionId"];
-        private readonly TraceWriter _log;
+        private readonly string _endpointUrl = Environment.GetEnvironmentVariable("cosmosDBEndPointUrl");
+        private readonly string _authorizationKey = Environment.GetEnvironmentVariable("cosmosDBAuthorizationKey");
+        private readonly string _databaseId = Environment.GetEnvironmentVariable("cosmosDBDatabaseId");
+        private readonly string _collectionId = Environment.GetEnvironmentVariable("cosmosDBCollectionId");
+        private readonly ILogger _log;
         // Reusable instance of DocumentClient which represents the connection to a Cosmos DB endpoint.
         private DocumentClient _client;
 
-        public DatabaseMethods(TraceWriter log)
+        public DatabaseMethods(ILogger log)
         {
             _log = log;
         }
@@ -31,7 +31,7 @@ namespace TollBooth
         /// <returns></returns>
         public List<LicensePlateDataDocument> GetLicensePlatesToExport()
         {
-            _log.Info("Retrieving license plates to export");
+            _log.LogInformation("Retrieving license plates to export");
             int exportedCount = 0;
             var collectionLink = UriFactory.CreateDocumentCollectionUri(_databaseId, _collectionId);
             List<LicensePlateDataDocument> licensePlates;
@@ -40,13 +40,17 @@ namespace TollBooth
             {
                 // MaxItemCount value tells the document query to retrieve 100 documents at a time until all are returned.
                 // TODO 5: Retrieve a List of LicensePlateDataDocument objects from the collectionLink where the exported value is false.
+                licensePlates = _client.CreateDocumentQuery<LicensePlateDataDocument>(collectionLink,
+                new FeedOptions() { EnableCrossPartitionQuery = true, MaxItemCount = 100 })
+                .Where(l => l.exported == false)
+                .ToList();
                 // COMPLETE: licensePlates = _client.CreateDocumentQuery ...
                 // TODO 6: Remove the line below.
-                licensePlates = new List<LicensePlateDataDocument>();
+                //licensePlates = new List<LicensePlateDataDocument>();
             }
 
             exportedCount = licensePlates.Count();
-            _log.Info($"{exportedCount} license plates found that are ready for export");
+            _log.LogInformation($"{exportedCount} license plates found that are ready for export");
             return licensePlates;
         }
 
@@ -60,7 +64,7 @@ namespace TollBooth
         /// <returns></returns>
         public async Task MarkLicensePlatesAsExported(IEnumerable<LicensePlateDataDocument> licensePlates)
         {
-            _log.Info("Updating license plate documents exported values to true");
+            _log.LogInformation("Updating license plate documents exported values to true");
             var collectionLink = UriFactory.CreateDocumentCollectionUri(_databaseId, _collectionId);
 
             using (_client = new DocumentClient(new Uri(_endpointUrl), _authorizationKey))
